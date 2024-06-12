@@ -39,16 +39,20 @@ Valid options are:
                 DNS IP address for the GfwList Domains (Default: 127.0.0.1)
     -p, --port <dns_port>
                 DNS Port for the GfwList Domains (Default: 5353)
-    -s, --ipset <ipset_name>
-                Ipset name for the GfwList domains
-                (If not given, ipset rules will not be generated.)
+    -f, --family <family_name>
+                Nftable family name (Default: inet)
+    -t, --table <table_name>
+                Nftable table name (Default: fw4)
+    -s, --set <set_name>
+                Set name for the GfwList domains
+                (If not given, set rules will not be generated.)
     -o, --output <FILE>
                 /path/to/output_filename
     -i, --insecure
                 Force bypass certificate validation (insecure)
     -l, --domain-list
                 Convert Gfwlist into domain list instead of dnsmasq rules
-                (If this option is set, DNS IP/Port & ipset are not needed)
+                (If this option is set, DNS IP/Port & set are not needed)
         --exclude-domain-file <FILE>
                 Delete specific domains in the result from a domain list text file
                 Please put one domain per line
@@ -103,11 +107,13 @@ get_args(){
     OUT_TYPE='DNSMASQ_RULES'
     DNS_IP='127.0.0.1'
     DNS_PORT='5353'
-    IPSET_NAME=''
+    FAMILY='inet'
+    TABLE='fw4'
+    SET_NAME=''
     FILE_FULLPATH=''
     CURL_EXTARG=''
     WGET_EXTARG=''
-    WITH_IPSET=0
+    WITH_SET=0
     EXTRA_DOMAIN_FILE=''
     EXCLUDE_DOMAIN_FILE=''
     IPV4_PATTERN='^((2[0-4][0-9]|25[0-5]|[01]?[0-9][0-9]?)\.){3}(2[0-4][0-9]|25[0-5]|[01]?[0-9][0-9]?)$'
@@ -133,8 +139,16 @@ get_args(){
                 DNS_PORT="$2"
                 shift
                 ;;
-            --ipset | -s)
-                IPSET_NAME="$2"
+            --family | -f)
+                FAMILY="$2"
+                shift
+                ;;
+            --table | -t)
+                TABLE="$2"
+                shift
+                ;;
+            --set | -s)
+                SET_NAME="$2"
                 shift
                 ;;
             --output | -o)
@@ -188,16 +202,16 @@ get_args(){
             exit 1
         fi
 
-        # Check ipset name
-        if [ -z $IPSET_NAME ]; then
-            WITH_IPSET=0
+        # Check set name
+        if [ -z $SET_NAME ]; then
+            WITH_SET=0
         else
-            IPSET_TEST=$(echo $IPSET_NAME | grep -E '^\w+(,\w+)*$')
-            if [ "$IPSET_TEST" != "$IPSET_NAME" ]; then
+            SET_TEST=$(echo $SET_NAME | grep -E '^\w+(,\w+)*$')
+            if [ "$SET_TEST" != "$SET_NAME" ]; then
                 _red 'Error: Please enter a valid IP set name.\n'
                 exit 1
             else
-                WITH_IPSET=1
+                WITH_SET=1
             fi
         fi
     fi
@@ -215,7 +229,7 @@ get_args(){
 
 process(){
     # Set Global Var
-    BASE_URL='https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt'
+    BASE_URL='https://github.com/gfwlist/gfwlist/raw/master/gfwlist.txt'
     TMP_DIR=`mktemp -d /tmp/gfwlist2dnsmasq.XXXXXX`
     BASE64_FILE="$TMP_DIR/base64.txt"
     GFWLIST_FILE="$TMP_DIR/gfwlist.txt"
@@ -281,12 +295,12 @@ process(){
 
     if [ $OUT_TYPE = 'DNSMASQ_RULES' ]; then
     # Convert domains into dnsmasq rules
-        if [ $WITH_IPSET -eq 1 ]; then
-            _green 'Ipset rules included.'
+        if [ $WITH_SET -eq 1 ]; then
+            _green 'Set rules included.'
             sort -u $DOMAIN_FILE | $SED_ERES 's#(.+)#server=/\1/'$DNS_IP'\#'$DNS_PORT'\
-ipset=/\1/'$IPSET_NAME'#g' > $CONF_TMP_FILE
+nftset=/\1/'4'\#'$FAMILY'\#'$TABLE'\#'$SET_NAME'#g' > $CONF_TMP_FILE
         else
-            _green 'Ipset rules not included.'
+            _green 'Set rules not included.'
             sort -u $DOMAIN_FILE | $SED_ERES 's#(.+)#server=/\1/'$DNS_IP'\#'$DNS_PORT'#g' > $CONF_TMP_FILE
         fi
 
